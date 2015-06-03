@@ -8,7 +8,7 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 import selenium.webdriver.support.expected_conditions as EC
 from selenium.webdriver.common.by import By
-from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import NoSuchElementException, ElementNotVisibleException
 import time
 
 #  We use a breadth first search to collect all of the usernames (handles in the Twitter world)
@@ -26,6 +26,7 @@ class twitter_bfs:
 # 	is equal to the desired depth
 # 	bfs(starting point, desired depth, file to print handles)
 	def bfs(self, start, depth, print_file):
+		print 'depth,user,progress,time'
 # 		list of tuples (depth where this user was found, the user's twitter handle)
 		queue = []
 # 		dictionary where the key is the user's twitter handle and the value is the list
@@ -37,16 +38,19 @@ class twitter_bfs:
 		current_depth = 0
 # 		get followers/following for starting point
 		network[start] = self.get_handles(start)
+		self.incremental_print(print_file,network[start])
+		visited.append(start)
 		queue.append((current_depth,start))
 		while len(queue) > 0:
 			current = queue.pop(0)
 			current_depth = current[0]
 # 			reached desired depth
-			if current_depth == depth:
+			if current_depth == depth-1:
 				break
 # 			add all handles in the user's list to the bfs queue that are not 
 # 			in the visited list
 			for handle in network[current[1]]:
+				start = datetime.now()
 				if handle not in visited:
 					visited.append(handle)
 #	 				increase current_depth since these are all one degree of sep from 'current'
@@ -55,6 +59,13 @@ class twitter_bfs:
 # 					the defaut setting is that we print one user at a time,
 # 					but we could wait until the end to print, too.
 					self.incremental_print(print_file,network[handle])
+				finished = datetime.now()
+				# print progress?
+				# if queue:
+				# 	print queue[len(queue)-1][0], queue[len(queue)-1][1],len(network),finished-start
+#				This is necassary if you are using a computer without a lot of memory.
+				if len(network) >= 30 and len(network) % 30 == 0:
+					self.new_window()		
 		return network
 
 #	go to user's twitter page then scroll to the bottom of the page
@@ -88,6 +99,7 @@ class twitter_bfs:
 #   execute java script to scroll to the bottom of page until there aren't anymore new 
 # 	elements
 	def scroll(self):
+		start = datetime.now()
 		while True:
 # 		execute java script
 			elemsCount = self.browser.execute_script("return document.querySelectorAll('.GridTimeline-items > .Grid').length")
@@ -98,24 +110,33 @@ class twitter_bfs:
 					lambda x: x.find_element_by_xpath(
 						"//*[contains(@class,'GridTimeline-items')]/*[contains(@class,'Grid')]["+str(elemsCount+1)+"]"))
 			except:
-# 			wait one more time to make sure there are not any more elements loading
-				try :
-					WebDriverWait(self.browser,3).until(
-						lambda x: x.find_element_by_xpath(
-							"//*[contains(@class,'GridTimeline-items')]/*[contains(@class,'Grid')]["+str(elemsCount+1)+"]"))
-				except:
-					break
+				break
+			if (datetime.now()-start).seconds/60 > 20:
+				break
+# 	This cleans up the firefox window.  Otherwise, firefox uses too much memory and the program basically freezes.
+	def new_window(self):
+#		print "CLEARING"
+		self.browser.quit()
+		self.browser = None
+		self.browser = webdriver.Firefox()
+		self.log_in()
+		time.sleep(2)
 
 # 	login to twitter profile	
 	def log_in(self):
 		self.browser.get("https://twitter.com/")
 		time.sleep(3)
-		username = self.browser.find_element_by_xpath("//input[@class='text-input email-input']") 
-		username.send_keys(self.username)
-		time.sleep(2)
-		password = self.browser.find_element_by_xpath("//input[@class='text-input']")
-		password.send_keys(self.password)
-		password.send_keys(Keys.RETURN)
+		try:
+			username = self.browser.find_element_by_xpath("//input[@id='signin-email']") 
+			username.send_keys(self.username)
+			time.sleep(2)
+			password = self.browser.find_element_by_xpath("//input[@id='signin-password']")
+			password.send_keys(self.password)
+			password.send_keys(Keys.RETURN)
+		except ElementNotVisibleException:
+			login_button = self.browser.find_element_by_xpath("//button[@class='Button StreamsLogin js-login']")
+			login_button.click()
+			self.log_in()
 		
 # 	print entire dictionary
 	def print_all(self,f,dict):
@@ -141,13 +162,13 @@ class twitter_bfs:
 			i += 1
 
 def main():
-	browser = webdriver.Firefox()
-	username = 'your username'
-	password = 'your password'
+	username = 'username'
+	password = 'password'
 # 	either 'following' or 'followers'
 	relationship = 'following'
+	browser = webdriver.Firefox()
 	t = twitter_bfs(username,password,relationship,browser)
-	file_path = 'file path'
+	file_path = 'path'
 	f = open(file_path,'w')
 # 	degrees of separation
 	depth = 2
